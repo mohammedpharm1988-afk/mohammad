@@ -23,9 +23,38 @@ async function init(){
   )`);
   await pool.query(`create index if not exists idx_patient_account_items_patient_date on patient_account_items(patient_id,item_date,id)`);
   await pool.query(`create index if not exists idx_patient_account_items_category on patient_account_items(category)`);
+  await installPharmacySync();
 }
 
-app.get('/health',async(q,s)=>{try{await init();s.json({ok:true,module:'patient-accounting',unified_ledger:true})}catch(e){s.status(500).json({ok:false,error:e.message})}});
+async function installPharmacySync(){
+  await pool.query(`create or replace function sync_pharmacy_sale_to_patient_account() returns trigger language plpgsql as $$
+  begin
+    if NEW.patient_id is not null then
+      insert into patient_account_items(patient_id,category,ref_type,ref_id,ref_no,description,item_date,debit,credit,payment_method,notes)
+      values(NEW.patient_id,'pharmacy','pharmacy_sale',NEW.id,NEW.sale_no,'بيع صيدلية',coalesce(NEW.sale_date::timestamptz,now()),coalesce(NEW.total,0),coalesce(NEW.paid,0),null,'مزامنة تلقائية من مبيعات الصيدلية')
+      on conflict do nothing;
+    end if;
+    return NEW;
+  end $$`);
+  await pool.query(`do $$ begin
+    if to_regclass('public.pharmacy_sales') is not null then
+      if not exists(select 1 from pg_trigger where tgname='trg_pharmacy_sale_patient_account') then
+        create trigger trg_pharmacy_sale_patient_account after insert on pharmacy_sales for each row execute function sync_pharmacy_sale_to_patient_account();
+      end if;
+    end if;
+  end $$`);
+  if(await pool.query(`select to_regclass('public.pharmacy_sales') is not null as exists`).then(r=>r.rows[0].exists)){
+    await pool.query(`insert into patient_account_items(patient_id,category,ref_type,ref_id,ref_no,description,item_date,debit,credit,notes)
+      select s.patient_id,'pharmacy','pharmacy_sale',s.id,s.sale_no,'بيع صيدلية',coalesce(s.sale_date::timestamptz,now()),coalesce(s.total,0),coalesce(s.paid,0),'مزامنة للمبيعات السابقة'
+      from pharmacy_sales s
+      where s.patient_id is not null
+        and not exists(select 1 from patient_account_items a where a.ref_type='pharmacy_sale' and a.ref_id=s.id and a.category='pharmacy')`);
+  }
+}
+
+setInterval(()=>installPharmacySync().catch(e=>console.error('pharmacy sync:',e.message)),15000);
+
+app.get('/health',async(q,s)=>{try{await init();s.json({ok:true,module:'patient-accounting',unified_ledger:true,pharmacy_auto_sync:true})}catch(e){s.status(500).json({ok:false,error:e.message})}});
 
 const categories={pharmacy:'صيدلية',admission:'رقود/تنويم',file:'ملف',other:'خدمات أخرى'};
 function validCategory(c){return Object.prototype.hasOwnProperty.call(categories,c)}
