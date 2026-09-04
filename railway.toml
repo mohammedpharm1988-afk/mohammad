@@ -1,0 +1,8 @@
+[build]
+builder = "RAILPACK"
+buildCommand = "npm install"
+
+[deploy]
+startCommand = "node production.js"
+healthcheckPath = "/health"
+restartPolicyType = "ALWAYS"
