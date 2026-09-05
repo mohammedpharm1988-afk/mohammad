@@ -1,11 +1,12 @@
 {
   "name": "wisdom-medical-accounting-desktop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "تطبيق سطح المكتب لنظام المحاسبة والمالي لمركز الحكمة الطبي",
+  "author": "مركز الحكمة الطبي",
   "main": "main.js",
-  "scripts": {"start":"electron .","dist":"electron-builder --win nsis"},
-  "dependencies": {"electron":"^38.1.0","electron-builder":"^26.0.12"},
+  "scripts": {"start":"electron .","dist":"electron-builder --win nsis --publish never"},
+  "devDependencies": {"electron":"^38.1.0","electron-builder":"^26.0.12"},
   "build": {
     "appId": "ye.wisdommedical.accounting",
     "productName": "نظام محاسبة مركز الحكمة الطبي",
